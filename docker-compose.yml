@@ -1,0 +1,84 @@
+services:
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  movies-service:
+    build: ./movies-service
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - MONGODB_URI=mongodb://mongodb:27017/movies
+    depends_on:
+      - mongodb
+
+  random-movies-service:
+    build: ./random-movies-service
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - MOVIES_SERVICE_URL=http://movies-service:3001
+    depends_on:
+      - movies-service
+
+  recommender-service:
+    build: ./recommender-service
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - MONGODB_URI=mongodb://mongodb:27017/movies
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - MOVIES_SERVICE_URL=http://movies-service:3001
+    depends_on:
+      - mongodb
+      - rabbitmq
+
+  history-service:
+    build: ./history-service
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - MOVIES_SERVICE_URL=http://movies-service:3001
+    depends_on:
+      - rabbitmq
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MOVIES_SERVICE_URL=http://movies-service:3001
+      - RANDOM_MOVIES_URL=http://random-movies-service:3002
+      - RECOMMENDER_URL=http://recommender-service:3003
+      - HISTORY_URL=http://history-service:3004
+    depends_on:
+      - movies-service
+      - random-movies-service
+      - recommender-service
+      - history-service
+
+volumes:
+  mongodb_data:
+  rabbitmq_data:
